@@ -199,6 +199,29 @@ and `CONIN$` on Windows.
 Forcing a mode skips detection: `--mode kitty` in a terminal without support
 will print escape sequences that the terminal may display as garbage.
 
+### Supported terminals
+
+| Terminal | Platforms | Result with `auto` |
+|----------|-----------|--------------------|
+| [kitty](https://sw.kovidgoyal.net/kitty/) | Linux, macOS, FreeBSD | **Full image** — Kitty graphics protocol, detected via `TERM=xterm-kitty` / `KITTY_WINDOW_ID` |
+| [Ghostty](https://ghostty.org/) | Linux, macOS | **Full image** — Kitty graphics protocol, `TERM_PROGRAM=Ghostty` |
+| [WezTerm](https://wezterm.org/) | Linux, macOS, Windows, FreeBSD, NetBSD | **Full image** — Kitty Image Protocol enabled by default; `TERM_PROGRAM=WezTerm` |
+| [iTerm2](https://iterm2.com/) | macOS | **Full image** — probed for Kitty protocol, falls back to native `OSC 1337` inline images |
+| Any other terminal implementing the Kitty/TGP protocol | — | **Full image** — found by the automatic 400 ms probe |
+| Terminal.app, Apple Terminal, Konsole, GNOME Terminal, xterm, Alacritty, rxvt, Windows Terminal, Linux console | — | **ANSI preview** — half-block image with 24-bit or 256 colours |
+| tmux / GNU screen | — | ANSI preview unless escape-sequence passthrough is enabled (`allow-passthrough on` in tmux) |
+| Pipe, log file, CI, no TTY | — | Plain single-line progress, no image |
+
+Notes:
+
+- Windows Terminal supports Sixel, but `ytd` does not implement Sixel — such
+  terminals get the ANSI half-block preview. Use `--mode text` explicitly if
+  auto-detection does not recognise your terminal.
+- WezTerm's Kitty implementation does not support animation frames; `ytd` does
+  not use them.
+- The table describes the *renderer*. All terminals can run `ytd`; only the
+  visual richness differs.
+
 ### Image size
 
 - `--width` / `YTD_WIDTH` is measured in **terminal cells**, not pixels.

@@ -97,7 +97,9 @@ Terminal graphics (auto mode)
   Kitty protocol     kitty, Ghostty, WezTerm, iTerm2 (macOS) -> live coloured preview
   iTerm2 protocol    iTerm2 fallback when its Kitty support is unavailable
   ANSI text          any terminal with 24-bit/256 colours, incl. Windows Terminal,
-                     Terminal.app, Konsole, GNOME Terminal, xterm
+                     Terminal.app, Konsole, GNOME Terminal, xterm, Alacritty
+                     tmux/screen: enable passthrough for the graphics protocols
+                     Sixel is not implemented -> ANSI preview on Sixel-only terminals
   Plain text         piped stdout / no TTY
 
 Runtime requirements
