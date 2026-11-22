@@ -258,14 +258,25 @@ func run(o options) error {
 	}
 
 	result, err := download(ctx, o.ytdlpBin, o.passthrough, onProgress, &logLines, o.debug)
+	if err != nil && shouldRetry403(logLines, o.passthrough) {
+		// YouTube can reject a CDN URL once and accept it on the next attempt.
+		// Reset the indicator and retry once with an explicit player client.
+		tracker = progressTracker{}
+		lastPct, lastDraw, lastProgress, drawErr = -1, time.Time{}, progress{}, nil
+		fmt.Fprintln(os.Stderr, "ytd: YouTube returned 403; retrying with the web player client...")
+		retryArgs := append(append([]string(nil), o.passthrough...),
+			"--extractor-args", "youtube:player_client=web")
+		retryLogs := make([]string, 0)
+		result, err = download(ctx, o.ytdlpBin, retryArgs, onProgress, &retryLogs, o.debug)
+		logLines = append(logLines, retryLogs...)
+	}
 	if err != nil {
 		_ = card.abort()
 		if len(logLines) > 0 {
 			fmt.Fprintln(os.Stderr, strings.Join(tailLines(logLines, 8), "\n"))
 		}
 		if strings.Contains(strings.Join(logLines, "\n"), "HTTP Error 403") {
-			fmt.Fprintln(os.Stderr, "Hint: YouTube can require a fresh player client or cookies, e.g. "+
-				"--cookies-from-browser <browser> or --extractor-args 'youtube:player_client=web'")
+			fmt.Fprintln(os.Stderr, "Hint: YouTube can require cookies: --cookies-from-browser <browser>")
 		}
 		return err
 	}

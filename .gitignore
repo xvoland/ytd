@@ -7,3 +7,4 @@ dist/
 assets/
 # Local agent instructions, not part of the repository
 AGENTS.md
+*.part

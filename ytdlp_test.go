@@ -78,6 +78,22 @@ func TestProgressTrackerFinishOverridesPercent(t *testing.T) {
 	}
 }
 
+func TestShouldRetry403(t *testing.T) {
+	logs := []string{"[youtube] id: error", "ERROR: unable to download video data: HTTP Error 403: Forbidden"}
+	if !shouldRetry403(logs, []string{"URL"}) {
+		t.Fatal("must retry a plain YouTube 403")
+	}
+	if shouldRetry403([]string{"ERROR: HTTP Error 403"}, []string{"URL"}) {
+		t.Fatal("must not retry a non-YouTube 403")
+	}
+	if shouldRetry403(logs, []string{"URL", "--extractor-args", "youtube:player_client=android"}) {
+		t.Fatal("must not override an explicit player client")
+	}
+	if shouldRetry403(logs, []string{"URL", "--cookies-from-browser", "firefox"}) {
+		t.Fatal("must not override explicit cookies")
+	}
+}
+
 func TestFilterArgs(t *testing.T) {
 	args := []string{
 		"https://example.com/v", "-f", "best",

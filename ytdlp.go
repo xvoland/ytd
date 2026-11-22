@@ -293,6 +293,23 @@ func scanLines(r io.Reader, fn func(string)) {
 	}
 }
 
+// shouldRetry403 reports whether a one-off YouTube 403 is worth retrying with
+// an explicit player client. A user-supplied client or cookies already handle
+// the problem, so we do not override those choices.
+func shouldRetry403(logLines []string, passthrough []string) bool {
+	joined := strings.Join(logLines, "\n")
+	if !strings.Contains(joined, "HTTP Error 403") ||
+		!strings.Contains(strings.ToLower(joined), "youtube") {
+		return false
+	}
+	for _, a := range passthrough {
+		if strings.HasPrefix(a, "--extractor-args") || strings.HasPrefix(a, "--cookies") {
+			return false
+		}
+	}
+	return true
+}
+
 func tailLines(lines []string, n int) []string {
 	if len(lines) <= n {
 		return lines
