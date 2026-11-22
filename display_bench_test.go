@@ -48,6 +48,28 @@ func BenchmarkKittyTransmit(b *testing.B) {
 	}
 }
 
+// BenchmarkKittyTransmitCached measures the real per-frame hot path: the
+// thumbnail is encoded once per percent and reused on subsequent ticks.
+func BenchmarkKittyTransmitCached(b *testing.B) {
+	img := benchImage(240, 135)
+	c := newCard(io.Discard, img, cardConfig{
+		mode:       modeKitty,
+		cellWidth:  defaultCellWidth,
+		cellHeight: defaultCellHeight,
+	})
+	c.termW, c.termH = 100, 24
+	if err := c.start(); err != nil {
+		b.Fatal(err)
+	}
+	data, err := c.encodedFrame(42)
+	if err != nil {
+		b.Fatal(err)
+	}
+	for b.Loop() {
+		_ = kittyTransmitData(io.Discard, data, 1000, 999, 24, 7)
+	}
+}
+
 func BenchmarkITermPlace(b *testing.B) {
 	img := benchImage(240, 135)
 	for b.Loop() {

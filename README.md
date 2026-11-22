@@ -237,15 +237,17 @@ The hot path is the per-frame image update. Reference numbers
 | Benchmark | sec/op | B/op | allocs/op |
 |-----------|--------|------|-----------|
 | `ApplyProgressWipe/w=240` | 50.7µ ± 1% | 88.1 KiB | 2 |
-| `KittyTransmit` | 725.0µ ± 0% | 1.08 MiB | 36 |
-| `ITermPlace` | 727.8µ ± 1% | 1.08 MiB | 36 |
+| `KittyTransmit` (encoding every call) | 714.4µ ± 0% | 1.07 MiB | 29 |
+| `KittyTransmitCached` (real hot path) | 117.3n ± 2% | 132 B | 2 |
+| `ITermPlace` (encoding every call) | 720.4µ ± 0% | 1.06 MiB | 26 |
 | `RenderHalfBlocks` | 222.3µ ± 0% | 85.3 KiB | 78 |
 | `ParseProgressLine` | 322.8n ± 0% | 192 B | 2 |
 | `ProgressTrackerUpdate` | 52.1n ± 0% | 0 B | 0 |
 
-At the default 120 ms redraw interval, `KittyTransmit` costs roughly 0.6% CPU
-and ~9 MB/s of short-lived allocations; this is the main target if lower
-overhead is ever needed.
+Per-frame encoding is avoided on the hot path: the wipe is cached by whole
+percent (at most 101 frames, ~4 KB each), so a repeated frame costs ~117 ns and
+132 B instead of ~714 µs and 1 MiB. A new percent still pays one encoding, i.e.
+at most ~72 ms of encoding work spread across an entire download.
 
 ## Copyright
 

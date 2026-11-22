@@ -9,3 +9,4 @@ assets/
 AGENTS.md
 *.part
 bench.txt
+*.test

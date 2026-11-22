@@ -16,6 +16,7 @@ import (
 	"os"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/disintegration/imaging"
@@ -149,8 +150,9 @@ type card struct {
 	hasImage     bool
 	started      bool
 
-	kittyID   uint32   // current kitty image id (double-buffered updates)
-	prevLines []string // previously drawn text lines, for incremental redraw
+	kittyID    uint32         // current kitty image id (double-buffered updates)
+	prevLines  []string       // previously drawn text lines, for incremental redraw
+	frameCache map[int][]byte // base64 PNG per rounded percent, avoids re-encoding every tick
 
 	buf bytes.Buffer
 }
@@ -169,10 +171,11 @@ func newCard(out io.Writer, base image.Image, cfg cardConfig) *card {
 		seed = 1
 	}
 	return &card{
-		out:     out,
-		cfg:     cfg,
-		base:    nrgba,
-		kittyID: seed, // unique per run: the final image outlives the process
+		out:        out,
+		cfg:        cfg,
+		base:       nrgba,
+		kittyID:    seed, // unique per run: the final image outlives the process
+		frameCache: make(map[int][]byte),
 	}
 }
 
@@ -271,23 +274,34 @@ func (c *card) update(p progress, m meta) error {
 
 	if c.hasImage {
 		// The image itself is the progress bar: the coloured region grows
-		// from the left as the download advances.
-		img := applyProgressWipe(c.base, p.Percent)
+		// from the left as the download advances. Graphics modes reuse a
+		// cached frame per whole percent — png.Encode costs ~1 MiB of
+		// short-lived allocations, so it must not run on every 120 ms tick.
+		framePct := clampInt(int(math.Round(p.Percent)), 0, 100)
 		switch c.cfg.mode {
 		case modeKitty:
+			data, err := c.encodedFrame(framePct)
+			if err != nil {
+				return err
+			}
 			nextID := c.kittyID + 1
 			if nextID == 0 {
 				nextID = 1
 			}
-			if err := kittyTransmit(&c.buf, img, nextID, c.kittyID, c.imgCols, c.imgRows); err != nil {
+			if err := kittyTransmitData(&c.buf, data, nextID, c.kittyID, c.imgCols, c.imgRows); err != nil {
 				return err
 			}
 			c.kittyID = nextID
 		case modeITerm:
-			if err := itermPlace(&c.buf, img, c.imgCols, c.imgRows); err != nil {
+			data, err := c.encodedFrame(framePct)
+			if err != nil {
+				return err
+			}
+			if err := itermPlaceData(&c.buf, data, c.imgCols, c.imgRows); err != nil {
 				return err
 			}
 		case modeText:
+			img := applyProgressWipe(c.base, p.Percent)
 			left := renderHalfBlocks(img, c.imgCols, c.imgRows, c.trueColor)
 			for i := 0; i < c.cardRows; i++ {
 				c.buf.WriteString("\x1b[u")
@@ -493,6 +507,58 @@ func (c *card) flush() error {
 
 // --- graphics protocol helpers ------------------------------------------------
 
+// previewBuffers are reused across frames. A 240x135 PNG costs about 1 MiB of
+// base64 text; allocating that string (and the PNG buffer) on every 120 ms
+// tick caused noticeable GC pressure. Pooling turns it into steady-state memory.
+type previewBuffers struct {
+	png *bytes.Buffer
+	b64 *[]byte
+}
+
+var itermPreviewName = base64.StdEncoding.EncodeToString([]byte("ytd-preview.png"))
+
+var previewPool = sync.Pool{New: func() any {
+	b64 := make([]byte, 0, 1<<20)
+	return &previewBuffers{png: new(bytes.Buffer), b64: &b64}
+}}
+
+func acquirePreview() *previewBuffers {
+	return previewPool.Get().(*previewBuffers)
+}
+
+func (p *previewBuffers) encode(img image.Image) error {
+	p.png.Reset()
+	if err := png.Encode(p.png, img); err != nil {
+		return fmt.Errorf("encode preview PNG: %w", err)
+	}
+	*p.b64 = base64.StdEncoding.AppendEncode((*p.b64)[:0], p.png.Bytes())
+	return nil
+}
+
+func (p *previewBuffers) release() {
+	previewPool.Put(p)
+}
+
+// encodedFrame returns base64 PNG data for a whole-percent step of the wipe.
+// Frames are computed lazily and cached: adjacent percent values differ by a
+// single pixel column at most, so integer granularity is visually identical.
+func (c *card) encodedFrame(pct int) ([]byte, error) {
+	if data, ok := c.frameCache[pct]; ok {
+		return data, nil
+	}
+	img := applyProgressWipe(c.base, float64(pct))
+	buffers := acquirePreview()
+	if err := buffers.encode(img); err != nil {
+		buffers.release()
+		return nil, err
+	}
+	data := make([]byte, len(*buffers.b64))
+	copy(data, *buffers.b64)
+	buffers.release()
+	c.frameCache[pct] = data
+	return data, nil
+}
+
 func kittyDelete(w io.Writer, id uint32) {
 	fmt.Fprintf(w, "\x1b_Ga=d,d=i,i=%d,q=2\x1b\\", id)
 }
@@ -503,12 +569,17 @@ func kittyDelete(w io.Writer, id uint32) {
 // one is deleted. This avoids the one-frame blank gap of delete-then-retransmit
 // and does not move the cursor (C=1).
 func kittyTransmit(w io.Writer, img image.Image, id, oldID uint32, cols, rows int) error {
-	var buf bytes.Buffer
-	if err := png.Encode(&buf, img); err != nil {
-		return fmt.Errorf("encode preview PNG: %w", err)
+	buffers := acquirePreview()
+	defer buffers.release()
+	if err := buffers.encode(img); err != nil {
+		return err
 	}
-	data := base64.StdEncoding.EncodeToString(buf.Bytes())
+	return kittyTransmitData(w, *buffers.b64, id, oldID, cols, rows)
+}
 
+// kittyTransmitData writes already encoded base64 PNG data.
+func kittyTransmitData(w io.Writer, data []byte, id, oldID uint32, cols, rows int) error {
+	var control [128]byte
 	for i := 0; i < len(data); i += kittyChunkSize {
 		end := i + kittyChunkSize
 		if end > len(data) {
@@ -518,11 +589,28 @@ func kittyTransmit(w io.Writer, img image.Image, id, oldID uint32, cols, rows in
 		if end < len(data) {
 			more = 1
 		}
+		c := control[:0]
 		if i == 0 {
-			fmt.Fprintf(w, "\x1b_Ga=T,f=100,t=d,q=2,C=1,i=%d,p=1,c=%d,r=%d,m=%d;%s\x1b\\",
-				id, cols, rows, more, data[i:end])
+			c = append(c, "\x1b_Ga=T,f=100,t=d,q=2,C=1,i="...)
+			c = strconv.AppendUint(c, uint64(id), 10)
+			c = append(c, ",p=1,c="...)
+			c = strconv.AppendInt(c, int64(cols), 10)
+			c = append(c, ",r="...)
+			c = strconv.AppendInt(c, int64(rows), 10)
+			c = append(c, ",m="...)
 		} else {
-			fmt.Fprintf(w, "\x1b_Gm=%d;%s\x1b\\", more, data[i:end])
+			c = append(c, "\x1b_Gm="...)
+		}
+		c = strconv.AppendInt(c, int64(more), 10)
+		c = append(c, ';')
+		if _, err := w.Write(c); err != nil {
+			return err
+		}
+		if _, err := w.Write(data[i:end]); err != nil {
+			return err
+		}
+		if _, err := io.WriteString(w, "\x1b\\"); err != nil {
+			return err
 		}
 	}
 	if oldID != 0 && oldID != id {
@@ -535,15 +623,32 @@ func kittyTransmit(w io.Writer, img image.Image, id, oldID uint32, cols, rows in
 // dimensions. The image is re-emitted on every frame because iTerm2 has no
 // image-id update command; the card area is cleared first.
 func itermPlace(w io.Writer, img image.Image, cols, rows int) error {
-	var buf bytes.Buffer
-	if err := png.Encode(&buf, img); err != nil {
-		return fmt.Errorf("encode preview PNG: %w", err)
+	buffers := acquirePreview()
+	defer buffers.release()
+	if err := buffers.encode(img); err != nil {
+		return err
 	}
-	name := base64.StdEncoding.EncodeToString([]byte("ytd-preview.png"))
-	data := base64.StdEncoding.EncodeToString(buf.Bytes())
-	fmt.Fprintf(w, "\x1b]1337;File=name=%s;width=%d;height=%d;preserveAspectRatio=1;inline=1:%s\a",
-		name, cols, rows, data)
-	return nil
+	return itermPlaceData(w, *buffers.b64, cols, rows)
+}
+
+// itermPlaceData writes already encoded base64 PNG data.
+func itermPlaceData(w io.Writer, data []byte, cols, rows int) error {
+	var control [128]byte
+	c := append(control[:0], "\x1b]1337;File=name="...)
+	c = append(c, itermPreviewName...)
+	c = append(c, ";width="...)
+	c = strconv.AppendInt(c, int64(cols), 10)
+	c = append(c, ";height="...)
+	c = strconv.AppendInt(c, int64(rows), 10)
+	c = append(c, ";preserveAspectRatio=1;inline=1:"...)
+	if _, err := w.Write(c); err != nil {
+		return err
+	}
+	if _, err := w.Write(data); err != nil {
+		return err
+	}
+	_, err := io.WriteString(w, "\a")
+	return err
 }
 
 // applyProgressWipe turns the preview into the progress indicator: pixels to
