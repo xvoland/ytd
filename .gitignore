@@ -1,0 +1,9 @@
+bin/
+dist/
+*.out
+.DS_Store
+/ytd
+# Reference materials (screenshots, protocol PDF, pixu sources) are not part of the repository
+assets/
+# Local agent instructions, not part of the repository
+AGENTS.md
