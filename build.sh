@@ -37,6 +37,7 @@ Commands:
   all        Cross-build all supported targets into ./dist/ + checksums
   current    Build the current OS/arch into ./dist/
   test       Run go test ./...
+  bench      Run benchmarks (COUNT=10, output BENCH_OUT=bench.txt)
   platforms  Show OS/terminal graphics support
   clean      Remove ./bin and ./dist
   help       Show this help
@@ -109,6 +110,11 @@ case "${1:-local}" in
   all)     build_all ;;
   current) build_current ;;
   test)    go test ./... ;;
+  bench)
+    count="${COUNT:-10}"
+    out="${BENCH_OUT:-bench.txt}"
+    go test -run '^$' -bench=. -benchmem -count="$count" ./... | tee "$out"
+    ;;
   platforms) show_platforms ;;
   clean)   rm -rf "$BIN" "$DIST" ;;
   help|-h|--help) usage ;;

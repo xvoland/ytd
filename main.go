@@ -28,6 +28,12 @@ import (
 
 const defaultVersion = "x.x.x"
 
+// Sentinel errors mapped to conventional Unix exit codes by main().
+var (
+	errUsage   = errors.New("usage error")
+	errMissing = errors.New("dependency not found")
+)
+
 // version is injected at build time via -ldflags "-X main.version=...".
 var version = defaultVersion
 
@@ -66,7 +72,14 @@ func main() {
 	}
 	if err := run(opts); err != nil {
 		fmt.Fprintf(os.Stderr, "ytd: %v\n", err)
-		os.Exit(1)
+		switch {
+		case errors.Is(err, errUsage):
+			os.Exit(2) // invalid or missing arguments
+		case errors.Is(err, errMissing):
+			os.Exit(127) // required external command not found
+		default:
+			os.Exit(1)
+		}
 	}
 }
 
@@ -195,10 +208,10 @@ func run(o options) error {
 		// like other tools by the same author.
 		printBanner()
 		fmt.Println()
-		return errors.New("no URL given (see 'ytd --help')")
+		return fmt.Errorf("%w: no URL given (see 'ytd --help')", errUsage)
 	}
 	if _, err := exec.LookPath(o.ytdlpBin); err != nil {
-		return fmt.Errorf("%s not found in PATH: %w", o.ytdlpBin, err)
+		return fmt.Errorf("%w: %s not found in PATH: %v", errMissing, o.ytdlpBin, err)
 	}
 
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
