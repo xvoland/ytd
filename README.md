@@ -9,6 +9,12 @@ The rendering code follows the approach used in
 [pixu](https://github.com/xvoland/pixu), another terminal image tool by the same
 author.
 
+<p align="center">
+<a href="https://dotoca.net/ytd">
+		<img src="images/screen.gif"  alt="download">
+  </a>
+</p>
+
 ## How it works
 
 1. `ytd` runs `yt-dlp -J --skip-download <your arguments>` to get the title,
