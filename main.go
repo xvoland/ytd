@@ -30,8 +30,9 @@ const defaultVersion = "x.x.x"
 
 // Sentinel errors mapped to conventional Unix exit codes by main().
 var (
-	errUsage   = errors.New("usage error")
-	errMissing = errors.New("dependency not found")
+	errUsage       = errors.New("usage error")
+	errMissing     = errors.New("dependency not found")
+	errInterrupted = errors.New("interrupted")
 )
 
 // version is injected at build time via -ldflags "-X main.version=...".
@@ -77,6 +78,8 @@ func main() {
 			os.Exit(2) // invalid or missing arguments
 		case errors.Is(err, errMissing):
 			os.Exit(127) // required external command not found
+		case errors.Is(err, errInterrupted):
+			os.Exit(130) // 128 + SIGINT
 		default:
 			os.Exit(1)
 		}
@@ -202,6 +205,22 @@ func parseArgs(args []string) (options, error) {
 	return o, nil
 }
 
+// printDiagnostics writes lines to stderr with an explicit carriage return.
+// This keeps output aligned even if the terminal has not been fully restored
+// from raw mode yet.
+func printDiagnostics(lines []string) {
+	if len(lines) == 0 {
+		return
+	}
+	var b strings.Builder
+	for _, line := range lines {
+		b.WriteString("\r")
+		b.WriteString(strings.TrimRight(line, "\r"))
+		b.WriteString("\r\n")
+	}
+	fmt.Fprint(os.Stderr, b.String())
+}
+
 func run(o options) error {
 	if len(o.passthrough) == 0 {
 		// Running without arguments shows the version and copyright banner,
@@ -283,7 +302,7 @@ func run(o options) error {
 		// Reset the indicator and retry once with an explicit player client.
 		tracker = progressTracker{}
 		lastPct, lastDraw, lastProgress, drawErr = -1, time.Time{}, progress{}, nil
-		fmt.Fprintln(os.Stderr, "ytd: YouTube returned 403; retrying with the web player client...")
+		printDiagnostics([]string{"ytd: YouTube returned 403; retrying with the web player client..."})
 		retryArgs := append(append([]string(nil), o.passthrough...),
 			"--extractor-args", "youtube:player_client=web")
 		retryLogs := make([]string, 0)
@@ -291,12 +310,18 @@ func run(o options) error {
 		logLines = append(logLines, retryLogs...)
 	}
 	if err != nil {
-		_ = card.abort()
-		if len(logLines) > 0 {
-			fmt.Fprintln(os.Stderr, strings.Join(tailLines(logLines, 8), "\n"))
+		// Check before stopKeys(): its cleanup cancels the context itself.
+		interrupted := ctx.Err() != nil
+		stopKeys() // restore the terminal before writing any diagnostics
+		reason := "Download failed"
+		if interrupted {
+			reason = "Cancelled by user"
+			err = errInterrupted
 		}
+		_ = card.abortWith(reason)
+		printDiagnostics(tailLines(logLines, 8))
 		if strings.Contains(strings.Join(logLines, "\n"), "HTTP Error 403") {
-			fmt.Fprintln(os.Stderr, "Hint: YouTube can require cookies: --cookies-from-browser <browser>")
+			printDiagnostics([]string{"Hint: YouTube can require cookies: --cookies-from-browser <browser>"})
 		}
 		return err
 	}

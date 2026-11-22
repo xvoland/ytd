@@ -465,6 +465,11 @@ func (c *card) close(finalName string) error {
 
 // abort removes the card after a failed or interrupted download.
 func (c *card) abort() error {
+	return c.abortWith("Download failed")
+}
+
+// abortWith removes the card and prints a custom reason line.
+func (c *card) abortWith(reason string) error {
 	if !c.started {
 		return nil
 	}
@@ -476,7 +481,7 @@ func (c *card) abort() error {
 	c.buf.WriteString("\x1b[u")
 	c.clearCard()
 	c.buf.WriteString("\x1b[u")
-	c.buf.WriteString("\x1b[1;31m✗\x1b[0m Download failed or interrupted\n")
+	fmt.Fprintf(&c.buf, "\x1b[1;31m✗\x1b[0m %s\n", reason)
 	// Leave the cursor just after the summary line instead of below the
 	// reserved area, so no blank lines appear before the next output.
 	c.buf.WriteString("\x1b[?25h")

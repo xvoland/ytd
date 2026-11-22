@@ -7,6 +7,7 @@ package main
 
 import (
 	"context"
+	"sync"
 	"time"
 
 	"golang.org/x/term"
@@ -72,15 +73,18 @@ func watchCancel(ctx context.Context, cancel context.CancelFunc) func() {
 		}
 	}()
 
+	var once sync.Once
 	return func() {
-		cancel() // stop the reader if it is still blocked in Read
-		_ = term.Restore(fd, oldState)
-		_ = control.Close()
-		// Closing a fd does not always interrupt a blocked Read on every OS;
-		// do not let cleanup hang if the reader is still finishing.
-		select {
-		case <-done:
-		case <-time.After(100 * time.Millisecond):
-		}
+		once.Do(func() {
+			cancel() // stop the reader if it is still blocked in Read
+			_ = term.Restore(fd, oldState)
+			_ = control.Close()
+			// Closing a fd does not always interrupt a blocked Read on every OS;
+			// do not let cleanup hang if the reader is still finishing.
+			select {
+			case <-done:
+			case <-time.After(100 * time.Millisecond):
+			}
+		})
 	}
 }

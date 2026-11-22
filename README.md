@@ -110,13 +110,15 @@ status 1.
 | `1` | yt-dlp or other runtime failure (including Ctrl+C) |
 | `2` | Usage error: no URL, or an invalid `ytd` option value |
 | `127` | Required dependency (`yt-dlp`) not found |
+| `130` | Interrupted with ESC or Ctrl+C (`128 + SIGINT`) |
 
 Diagnostics go to stderr; the progress card and help/banner go to stdout.
 
 Press **ESC** (or Ctrl+C) at any time during the download to interrupt it. The
 terminal is briefly switched to raw mode while `ytd` runs so ESC is delivered
-immediately; settings are restored on exit. Arrow-key escape sequences are
-ignored.
+immediately; settings are restored before the `Cancelled by user` message and
+any yt-dlp diagnostics are printed, so the output stays aligned. Arrow-key
+escape sequences are ignored.
 
 ### Environment variables
 
