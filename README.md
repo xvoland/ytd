@@ -51,8 +51,13 @@ all of yt-dlp's options, format selectors, cookies, proxies, etc. keep working.
 
 ```bash
 brew tap xvoland/ytd
+brew trust xvoland/ytd   # one time: third-party taps are untrusted by default
 brew install ytd
 ```
+
+`brew trust` is required by Homebrew for any non-core tap; run it once per
+machine. Without it Homebrew refuses to load the formula with
+«Refusing to load formula ... from untrusted tap».
 
 The formula builds from the tagged source and **ad-hoc signs the macOS binary**
 (`codesign --force --timestamp=none --sign -`) at install time, then removes the
