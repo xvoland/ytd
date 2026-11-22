@@ -1,8 +1,9 @@
 name: build
 
 on:
+  # Automatic builds only for release tags. Use workflow_dispatch to build
+  # manually from any branch or ref at any time.
   push:
-    branches: [master]
     tags: ['v*']
   workflow_dispatch:
 

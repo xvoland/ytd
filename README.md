@@ -254,7 +254,9 @@ ytd --cookies-from-browser firefox https://youtu.be/VIDEO_ID
 Pushing a `v*` tag triggers `.github/workflows/build.yml`. It builds all ten
 targets, ad-hoc signs the macOS binaries (`codesign --force --timestamp=none
 --sign -`), refreshes `checksums.txt` afterwards, and attaches every binary to
-a GitHub Release. Pushes to `master` run the build without creating a release.
+a GitHub Release. Automatic builds run **only** on `v*` tag pushes; to build at
+any time from any ref, run the `build` workflow manually via `workflow_dispatch`
+(no Release is created unless it is dispatched on a tag).
 
 The `update-tap` job updates `url`, `sha256` and `version` in
 [`Formula/ytd.rb`](https://github.com/xvoland/homebrew-ytd/blob/main/Formula/ytd.rb)
