@@ -1,0 +1,107 @@
+name: build
+
+on:
+  push:
+    branches: [master]
+    tags: ['v*']
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    # Pure Go (no CGO), so every target can be cross-built on one runner.
+    # macOS is required for codesign.
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+          fetch-tags: true
+      - uses: actions/setup-go@v7
+        with:
+          go-version-file: go.mod
+
+      - name: Build all platforms
+        run: ./build.sh all
+
+      - name: Ad-hoc sign macOS binaries
+        run: |
+          for f in dist/ytd-darwin-*; do
+            codesign --force --timestamp=none --sign - "$f"
+            codesign --verify "$f"
+          done
+
+      # Signing changes the bytes, so the checksum file from build.sh is stale.
+      - name: Refresh checksums after signing
+        run: |
+          cd dist
+          shasum -a 256 ytd-* > checksums.txt
+          cat checksums.txt
+
+      - uses: actions/upload-artifact@v7
+        with:
+          name: ytd-dist
+          path: dist/
+          if-no-files-found: error
+
+  release:
+    if: startsWith(github.ref, 'refs/tags/v')
+    needs: [build]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+          fetch-tags: true
+      - uses: actions/download-artifact@v8
+        with:
+          name: ytd-dist
+          path: dist
+      - name: Create GitHub Release
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          files=$(find dist -type f)
+          if gh release view "${GITHUB_REF_NAME}" >/dev/null 2>&1; then
+            echo "Release ${GITHUB_REF_NAME} already exists; skipping create."
+          else
+            gh release create "${GITHUB_REF_NAME}" \
+              --title "${GITHUB_REF_NAME}" \
+              --generate-notes \
+              $files
+          fi
+
+  update-tap:
+    # Optional: set TAP_TOKEN and adjust the formula name when the tap exists.
+    if: startsWith(github.ref, 'refs/tags/v')
+    needs: [release]
+    runs-on: ubuntu-latest
+    continue-on-error: true
+    steps:
+      - name: Update Homebrew tap formula
+        env:
+          TAP_TOKEN: ${{ secrets.TAP_TOKEN }}
+        run: |
+          if [ -z "$TAP_TOKEN" ]; then
+            echo "TAP_TOKEN is not set; skipping tap update."
+            exit 0
+          fi
+          url="https://github.com/${{ github.repository }}/archive/refs/tags/${GITHUB_REF_NAME}.tar.gz"
+          sha=$(curl -sL "$url" | shasum -a 256 | cut -d' ' -f1)
+          version="${GITHUB_REF_NAME#v}"
+          git clone "https://x-access-token:${TAP_TOKEN}@github.com/xvoland/homebrew-ytd.git" /tmp/tap
+          cd /tmp/tap
+          sed -i.bak -E "s|^  url \".*\"|  url \"${url}\"|" Formula/ytd.rb
+          sed -i.bak -E "s|^  sha256 \".*\"|  sha256 \"${sha}\"|" Formula/ytd.rb
+          sed -i.bak -E "s|^  version \".*\"|  version \"${version}\"|" Formula/ytd.rb
+          rm -f Formula/ytd.rb.bak
+          git config user.email "ci@dotoca.net"
+          git config user.name "ytd-ci"
+          git add Formula/ytd.rb
+          git diff --cached --quiet && echo "formula already up to date" || \
+            (git commit -m "ytd ${GITHUB_REF_NAME}" && git push)

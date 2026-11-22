@@ -224,6 +224,23 @@ ytd --extractor-args 'youtube:player_client=web' https://youtu.be/VIDEO_ID
 ytd --cookies-from-browser firefox https://youtu.be/VIDEO_ID
 ```
 
+## Releases and Homebrew
+
+Pushing a `v*` tag triggers `.github/workflows/build.yml`. It builds all ten
+targets, ad-hoc signs the macOS binaries (`codesign --force --timestamp=none
+--sign -`), refreshes `checksums.txt` afterwards, and attaches every binary to
+a GitHub Release. Pushes to `master` run the build without creating a release.
+
+A Homebrew formula should strip quarantine from the signed binary:
+
+```ruby
+system "/usr/bin/xattr", "-dr", "com.apple.quarantine", bin/"ytd"
+```
+
+The optional `update-tap` job updates `Formula/ytd.rb` in
+`xvoland/homebrew-ytd` when the `TAP_TOKEN` secret is configured; it is skipped
+otherwise and never fails the release.
+
 ## Development
 
 ```bash
