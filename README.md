@@ -113,6 +113,11 @@ status 1.
 
 Diagnostics go to stderr; the progress card and help/banner go to stdout.
 
+Press **ESC** (or Ctrl+C) at any time during the download to interrupt it. The
+terminal is briefly switched to raw mode while `ytd` runs so ESC is delivered
+immediately; settings are restored on exit. Arrow-key escape sequences are
+ignored.
+
 ### Environment variables
 
 Priority is always **explicit CLI flag > environment variable > built-in

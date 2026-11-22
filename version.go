@@ -58,6 +58,7 @@ ytd options:
   --no-preview         Do not show the thumbnail, only the progress card
   --ytdlp <path>       Path to the yt-dlp binary (default: yt-dlp)
   --debug              Print diagnostic details
+  ESC / Ctrl+C         Interrupt the download
   --version, -V        Show version and exit
   --help, -h           Show this help and exit
   --                   Treat all following arguments as yt-dlp arguments

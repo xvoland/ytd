@@ -214,8 +214,10 @@ func run(o options) error {
 		return fmt.Errorf("%w: %s not found in PATH: %v", errMissing, o.ytdlpBin, err)
 	}
 
-	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
-	defer stop()
+	signalCtx, stopSignals := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
+	defer stopSignals()
+	ctx, cancel := context.WithCancel(signalCtx)
+	defer cancel()
 
 	started := time.Now()
 
@@ -243,6 +245,11 @@ func run(o options) error {
 		return err
 	}
 	defer card.close("")
+
+	// ESC aborts the download just like Ctrl+C. Started after terminal probing
+	// so both readers never contend for the same tty.
+	stopKeys := watchCancel(ctx, cancel)
+	defer stopKeys()
 
 	var (
 		tracker      progressTracker
