@@ -47,9 +47,29 @@ all of yt-dlp's options, format selectors, cookies, proxies, etc. keep working.
 
 ## Installation
 
+### Homebrew (macOS / Linux)
+
+```bash
+brew tap xvoland/ytd
+brew install ytd
+```
+
+The formula builds from the tagged source and **ad-hoc signs the macOS binary**
+(`codesign --force --timestamp=none --sign -`) at install time, then removes the
+quarantine attribute. Gatekeeper therefore accepts it without the
+«developer cannot be verified» prompt. `yt-dlp` is installed as a dependency.
+Upgrade with `brew upgrade ytd`.
+
+### Go
+
 ```bash
 go install github.com/xvoland/ytd@latest
 ```
+
+### Prebuilt binaries
+
+Every `v*` tag triggers a release build with binaries for 10 platforms and a
+`checksums.txt`. macOS binaries in the release are ad-hoc signed as well.
 
 Or build locally:
 
@@ -231,15 +251,13 @@ targets, ad-hoc signs the macOS binaries (`codesign --force --timestamp=none
 --sign -`), refreshes `checksums.txt` afterwards, and attaches every binary to
 a GitHub Release. Pushes to `master` run the build without creating a release.
 
-A Homebrew formula should strip quarantine from the signed binary:
-
-```ruby
-system "/usr/bin/xattr", "-dr", "com.apple.quarantine", bin/"ytd"
-```
-
-The optional `update-tap` job updates `Formula/ytd.rb` in
-`xvoland/homebrew-ytd` when the `TAP_TOKEN` secret is configured; it is skipped
-otherwise and never fails the release.
+The `update-tap` job updates `url`, `sha256` and `version` in
+[`Formula/ytd.rb`](https://github.com/xvoland/homebrew-ytd/blob/main/Formula/ytd.rb)
+in the `xvoland/homebrew-ytd` tap on every `v*` tag push. The formula signs the
+binary with `codesign --sign -` and strips quarantine via `xattr -dr
+com.apple.quarantine` after building, so Homebrew installs an accepted binary
+without extra user steps. The job needs the `TAP_TOKEN` secret and never fails
+the release.
 
 ## Development
 
