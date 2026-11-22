@@ -1,13 +1,13 @@
-# YTD — terminal video downloader with a live preview
+# YTD — CLI terminal video downloader with a live preview
 
-`ytd` is a thin Golang wrapper around [yt-dlp](https://github.com/yt-dlp/yt-dlp).
+`ytd` is a thin wrapper around [yt-dlp](https://github.com/yt-dlp/yt-dlp).
 It downloads videos from the terminal and shows a thumbnail that **gains colour
 as the download progresses**: it starts fully grayscale and reaches full colour
 at 100%. The thumbnail is the progress indicator.
 
-The rendering code follows the approach used in
-[pixu](https://github.com/xvoland/pixu), another terminal image tool by the same
-author.
+Homepage: https://dotoca.net/ytd
+
+
 
 <p align="center">
 <a href="https://dotoca.net/ytd">
@@ -303,4 +303,3 @@ at most ~72 ms of encoding work spread across an entire download.
 (c) 2026, Vitalii Tereshchuk / xVoLAnD (https://dotoca.net). All rights reserved.
 ```
 
-Homepage: https://dotoca.net/ytd
